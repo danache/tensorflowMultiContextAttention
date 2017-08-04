@@ -16,8 +16,8 @@ num_gpus = len(gpus) # number of GPUs to use
 ### parameters setting
 N_CLASSES = 16
 INPUT_SIZE = (256, 256)
-BATCH_SIZE = 4
-BATCH_I = 2
+BATCH_SIZE = 6
+BATCH_I = 3
 SHUFFLE = True
 RANDOM_SCALE = False
 RANDOM_MIRROR = True
@@ -32,7 +32,7 @@ DATA_DIR = './datasets/human'
 LIST_PATH = './datasets/human/list/train_rev.txt'
 DATA_ID_LIST = './datasets/human/list/train_id.txt'
 SNAPSHOT_DIR = './checkpoint/hg'
-RESTORE_FROM = './model/hg'
+RESTORE_FROM = './checkpoint/hg_back'
 LOG_DIR = './logs/hg'
 
 
