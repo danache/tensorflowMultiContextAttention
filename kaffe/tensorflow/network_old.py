@@ -3,7 +3,6 @@ import tensorflow as tf
 slim = tf.contrib.slim
 
 DEFAULT_PADDING = 'SAME'
-N_CLASSES = 16
 
 
 def layer(op):
@@ -127,50 +126,8 @@ class Network(object):
         '''Verifies that the padding is one of the supported ones.'''
         assert padding in ('SAME', 'VALID')
 
-    def conv(self,
-             input,
-             k_h,
-             k_w,
-             c_o,
-             s_h,
-             s_w,
-             name,
-             relu=True,
-             padding=DEFAULT_PADDING,
-             group=1,
-             biased=True):
-        # Verify that the padding is acceptable
-        self.validate_padding(padding)
-        # Get the number of channels in the input
-        c_i = input.get_shape()[-1]
-        # Verify that the grouping parameter is valid
-        assert c_i % group == 0
-        assert c_o % group == 0
-        # Convolution for a given input and kernel
-        convolve = lambda i, k: tf.nn.conv2d(i, k, [1, s_h, s_w, 1], padding=padding)
-        with tf.variable_scope(name) as scope:
-            kernel = self.make_w_var('weights', shape=[k_h, k_w, c_i / group, c_o])
-            if group == 1:
-                # This is the common-case. Convolve the input without any further complications.
-                output = convolve(input, kernel)
-            else:
-                # Split the input into groups and then convolve each of them independently
-                input_groups = tf.split(3, group, input)
-                kernel_groups = tf.split(3, group, kernel)
-                output_groups = [convolve(i, k) for i, k in zip(input_groups, kernel_groups)]
-                # Concatenate the groups
-                output = tf.concat(3, output_groups)
-            # Add the biases
-            if biased:
-                biases = self.make_b_var('biases', [c_o])
-                output = tf.nn.bias_add(output, biases)
-            if relu:
-                # ReLU non-linearity
-                output = tf.nn.relu(output, name=scope.name)
-            return output
-
     @layer
-    def conv_layer(self,
+    def conv(self,
              input,
              k_h,
              k_w,
@@ -258,7 +215,7 @@ class Network(object):
     def relu(self, input, name):
         return tf.nn.relu(input, name=name)
 
-    
+    @layer
     def max_pool(self, input, k_h, k_w, s_h, s_w, name, padding=DEFAULT_PADDING):
         self.validate_padding(padding)
         return tf.nn.max_pool(input,
@@ -324,17 +281,17 @@ class Network(object):
                 raise ValueError('Rank 2 tensor input expected for softmax!')
         return tf.nn.softmax(input, name)
         
-    # @layer
-    # def batch_normalization(self, input, name, is_training, activation_fn=None, scale=True):
-    #     with tf.variable_scope(name) as scope:
-    #         output = slim.batch_norm(
-    #             input,
-    #             activation_fn=activation_fn,
-    #             is_training=is_training,
-    #             updates_collections=None,
-    #             scale=scale,
-    #             scope=scope)
-    #         return output
+    @layer
+    def batch_normalization(self, input, name, is_training, activation_fn=None, scale=True):
+        with tf.variable_scope(name) as scope:
+            output = slim.batch_norm(
+                input,
+                activation_fn=activation_fn,
+                is_training=is_training,
+                updates_collections=None,
+                scale=scale,
+                scope=scope)
+            return output
 
     @layer
     def dropout(self, input, keep_prob, name):
@@ -342,7 +299,7 @@ class Network(object):
         return tf.nn.dropout(input, keep, name=name)
 
     @layer
-    def batch_normalization(self, input, name = None):
+    def tf_batch_normalization(self, input, name, is_training, activation_fn=None, scale=True):
         return tf.layers.batch_normalization(input)
 
     @layer
@@ -360,186 +317,24 @@ class Network(object):
     def sigmoid(self, input, name):
         with tf.variable_scope(name) as scope:
             return tf.nn.sigmoid(input)
-    
+    @layer
     def replicate(self, input, numIn, dim, name):
         with tf.variable_scope(name) as scope:
             repeat = []
             for i in xrange(numIn):
                 repeat.append(input)
-            return tf.concat(input, dim)
+            return tf.squeeze(tf.stack(repeat, axis=dim))
     @layer
-    def multiply2(self, input, name):
+    def multiply2(self, inputs, name):
         with tf.variable_scope(name) as scope:
-            return tf.multiply(input[0], input[1])
+            return tf.multiply(inputs[0], inputs[1])
 
     @layer
-    def printLayer(self, input, name):
+    def printLayer(self, inputs, name):
         with tf.variable_scope(name) as scope:
-            print(input)
+            print(inputs)
             return 0
     @layer
-    def stack(self, input, axis, name):
+    def stack(self, inputs, axis, name):
         with tf.variable_scope(name) as scope:
-            return tf.squeeze(tf.stack(input, axis=axis))
-
-    def conv_block(self, input, numIn, numOut, name):
-        with tf.variable_scope(name) as scope:
-            bn1 = tf.layers.batch_normalization(input, name = 'bn1')
-            relu1 = tf.nn.relu(bn1, name = 'relu1')
-            conv1 = self.conv(relu1,1, 1, numOut/2, 1, 1, biased=True, relu=False, name = 'conv1', padding='SAME')
-            bn2 = tf.layers.batch_normalization(conv1, name = 'bn2')
-            relu2 = tf.nn.relu(bn2, name = 'relu2')
-            conv2 = self.conv(relu2,3, 3, numOut/2, 1, 1, biased=True, relu=False, name = 'conv2', padding='SAME')
-            bn3 = tf.layers.batch_normalization(conv2, name = 'bn3')
-            relu3 = tf.nn.relu(bn3, name = 'relu3')
-            conv3 = self.conv(relu3,1, 1, numOut, 1, 1, biased=True, relu=False, name = 'conv3', padding='SAME')        
-            return conv3
-
-    def skip_layer(self, input, numIn, numOut, name):
-        with tf.variable_scope(name) as scope:
-            if numIn == numOut:
-                return input
-            else:
-                conv = self.conv(input, 1, 1, numOut, 1, 1, biased=True, relu=False, name = 'skip', padding='SAME')
-                return conv
-
-    def pool_layer(self, input, numIn, numOut, name):
-        with tf.variable_scope(name) as scope:
-            bn1 = tf.layers.batch_normalization(input, name = 'bn1')
-            relu1 = tf.nn.relu(bn1, name = 'relu1')
-            pool1 = self.max_pool(relu1, 2, 2, 2, 2, name = 'pool1')
-            conv1 = self.conv(pool1, 3, 3, numOut, 1, 1, biased=True, relu=False, name = 'conv1', padding='SAME')
-            bn2 = tf.layers.batch_normalization(conv1, name = 'bn2')
-            relu2 = tf.nn.relu(bn2, name = 'relu2')
-            conv2 = self.conv(relu2,3, 3, numOut, 1, 1, biased=True, relu=False, name = 'conv2', padding='SAME')
-            upsample =  tf.image.resize_nearest_neighbor(conv2, size=[int(conv2.get_shape()[1]) * 2, int(conv2.get_shape()[1]) * 2])
-            return upsample
-
-    
-    def Residual(self, input, numIn, numOut, name):
-        with tf.variable_scope(name) as scope:
-            conv_b = self.conv_block(input, numIn, numOut, name = 'Conv_Block')
-            skip_l = self.skip_layer(input, numIn, numOut, name = 'Skip_Layer')
-            add = tf.add_n([conv_b, skip_l])
-            return add
-            # return tf.add_n([self.conv_b, self.skip_1])
-
-    
-    def ResidualPool(self, input, numIn, numOut, name):
-        with tf.variable_scope(name) as scope:
-            conv_b = self.conv_block(input, numIn, numOut, name = 'Conv_Block')
-            skip_l = self.skip_layer(input, numIn, numOut, name = 'Skip_Layer')
-            pool_l = self.pool_layer(input, numIn, numOut, name = 'Pool_Layer')
-            return tf.add_n([conv_b, skip_l, pool_l])
-
-    def AttentionIter(self, input, numIn, lrnSize, itersize, name):
-        with tf.variable_scope(name) as scope:
-            U = self.conv(input, 3, 3, 1, 1, 1, biased=True, relu=False, name = 'conv1', padding='SAME')
-            # with tf.variable_scope('spConv') as scope:
-            #     spConv1 = self.conv(input, lrnSize, lrnSize, 1, 1, 1, biased=True, relu=False, name = 'sp_conv', padding='SAME')
-            Q = []
-            C = []
-            for i in range(0,itersize):
-                if i == 0:
-                    with tf.variable_scope('spConv', reuse = False):
-                        conv = self.conv(U, lrnSize, lrnSize, 1, 1, 1, biased=True, relu=False, name = 'sp_conv', padding='SAME')
-                else:
-                    with tf.variable_scope('spConv', reuse = True):
-                        conv = self.conv(Q[i-1], lrnSize, lrnSize, 1, 1, 1, biased=True, relu=False, name = 'sp_conv', padding='SAME')
-                C.append(conv)
-                Q_tmp = tf.nn.sigmoid(tf.add_n([C[i], U]))# 
-                Q.append(Q_tmp)
-            replicate = self.replicate(Q[itersize-1], numIn, -1, name = '_replicate')   #******Q[itersize]-->Q[itersize-1]  2-->3
-            pheat = tf.nn.sigmoid(tf.multiply(input, replicate))
-            return pheat
-
-    @layer
-    def AttentionPartsCRF(self, input, numIn, lrnSize, itersize, usepart, name):
-        with tf.variable_scope(name) as scope:
-            if usepart == 0:
-                return self.AttentionIter(input, numIn, lrnSize, itersize, name = '_AttIter')
-            else:
-                partnum = N_CLASSES
-                pre = []
-                for i in range(0,N_CLASSES):
-                    att = self.AttentionIter(input, numIn, lrnSize, itersize, name = 'att_'+ str(i))
-                    s = self.conv(att, 1, 1, 1, 1, 1, biased=True, relu=False, name = 's_' + str(i), padding='SAME')
-                    pre.append(s)
-                return tf.concat(pre, -1)
-
-    def repResidual(self, input, num, nRep, name):
-        with tf.variable_scope(name) as scope:
-            out = []
-            for i in range(0, nRep):  #***1-->0
-                if i == 0:
-                    tmpout = self.Residual(input, num, num, name = 'tmpout_' + str(i))
-                else:
-                    tmpout = self.ResidualPool(out[i-1], num, num, name = 'tmpout_' + str(i))
-                out.append(tmpout)
-            return out[nRep-1]
-
-    
-    def hourglasses(self, input, n, f, imsize, nModual, name):
-        with tf.variable_scope(name) as scope:
-            # upper branch
-            pool = self.max_pool(input, 2, 2, 2, 2, name = 'pool')
-            up = []
-            low = []
-            for i in range(0,nModual):
-                if i==0:
-                    if n>1:
-                        tmpup = self.repResidual(input, f, n-1, name = 'tmpup_' + str(i))
-                    else:
-                        tmpup = self.Residual(input, f, f, name = 'tmpup_' + str(i))
-                    tmplow = self.Residual(pool, f, f, name = 'tmplow_' + str(i))
-                else:
-                    if n>1:
-                        tmpup = self.repResidual(up[i-1], f, n-1, name = 'tmpup_' + str(i))
-                    else:
-                        tmpup = self.Residual(up[i-1], f, f, name = 'tmpup_' + str(i))
-                    tmplow = self.Residual(low[i-1], f, f, name = 'tmplow_' + str(i))
-                up.append(tmpup)
-                low.append(tmplow)
-
-            # lower branch
-            if n>1:
-                low2 = self.hourglasses(low[nModual-1], n-1, f, imsize/2, nModual, name = 'low2')
-                print(low2.get_shape())
-            else:
-                low2 = self.Residual(low[nModual-1], f, f, name = 'low2')
-            low3 = self.Residual(low2, f, f, name='low3')
-            print(low3.get_shape())
-            up2 = tf.image.resize_nearest_neighbor(low3, size=[int(low3.get_shape()[1])*2, int(low3.get_shape()[1])*2])
-            comb = tf.add_n([up[nModual-1], up2])
-            return comb
-
-    @layer
-    def hourglass(self, input, n, f, imsize, nModual, name):
-        return self.hourglasses(input, n, f, imsize, nModual, name)
-
-    @layer
-    def lin(self, input, numIn, numOut, name):
-        with tf.variable_scope(name) as scope:
-            l = self.conv(input, 1, 1, numOut, 1, 1, biased=True, relu=False, name = 'l_', padding='SAME')
-            return tf.nn.relu(tf.layers.batch_normalization(l))
-
-    @layer
-    def preProcess(self, input, numOut, name):
-        with tf.variable_scope(name) as scope:
-            conv1_ = self.conv(input, 7, 7, 64, 1, 1, biased=True, relu=False, name = 'conv1_', padding='SAME')
-            conv1 = tf.nn.relu(tf.layers.batch_normalization(conv1_))
-            r1 = self.Residual(conv1, 64, 64, name = 'r1')
-            pool1 = self.max_pool(r1, 2, 2, 2, 2, name = '_pool1')
-            r2 = self.Residual(pool1, 64, 64, name = 'r2')
-            r3 = self.Residual(r2, 64, 128, name = 'r3')
-
-            pool2 = self.max_pool(r3, 2, 2, 2, 2, name = '_pool2')
-            r4 = self.Residual(pool2, 128, 128, name = 'r4')
-            r5 = self.Residual(r4, 128, 128, name = 'r5')
-            r6 = self.Residual(r5, 128, numOut, name = 'r6')
-            return r6
-
-
-
-
-
+            return tf.squeeze(tf.stack(inputs, axis=axis))

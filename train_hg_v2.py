@@ -9,15 +9,15 @@ from LIP_model import *
 import matplotlib.pyplot as plt
 
 # Set gpus
-gpus = [0,3] # Here I set CUDA to only see one GPU
+gpus = [3] # Here I set CUDA to only see one GPU
 os.environ["CUDA_VISIBLE_DEVICES"]=','.join([str(i) for i in gpus])
 num_gpus = len(gpus) # number of GPUs to use
 
 ### parameters setting
 N_CLASSES = 16
 INPUT_SIZE = (256, 256)
-BATCH_SIZE = 6
-BATCH_I = 3
+BATCH_SIZE = 2
+BATCH_I = 2
 SHUFFLE = True
 RANDOM_SCALE = False
 RANDOM_MIRROR = True
@@ -70,16 +70,16 @@ def main():
 
                 ## Create network.
                 with tf.variable_scope('', reuse=reuse1):
-                    net = StackedHourglassModel({'data': next_image}, is_training=False, n_classes=N_CLASSES)
+                    net = MultiContextAttentionModel({'data': next_image}, is_training=False, n_classes=N_CLASSES)
                     
-                    hg1_out = net.layers['Stack1_Heatmap']
-                    hg2_out = net.layers['Stack2_Heatmap']
-                    hg3_out = net.layers['Stack3_Heatmap']
-                    hg4_out = net.layers['Stack4_Heatmap']
-                    hg5_out = net.layers['Stack5_Heatmap']
-                    hg6_out = net.layers['Stack6_Heatmap']
-                    hg7_out = net.layers['Stack7_Heatmap']
-                    hg8_out = net.layers['Stack8_Heatmap']
+                    hg1_out = net.layers['Stack1_tmpOut']
+                    hg2_out = net.layers['Stack2_tmpOut']
+                    hg3_out = net.layers['Stack3_tmpOut']
+                    hg4_out = net.layers['Stack4_tmpOut']
+                    hg5_out = net.layers['Stack5_tmpOut']
+                    hg6_out = net.layers['Stack6_tmpOut']
+                    hg7_out = net.layers['Stack7_tmpOut']
+                    hg8_out = net.layers['Stack8_tmpOut']
 
                 loss_hg1 = tf.reduce_mean(tf.sqrt(tf.reduce_sum(tf.square(tf.subtract(next_heatmap, hg1_out)), [1, 2, 3])))
                 loss_hg2 = tf.reduce_mean(tf.sqrt(tf.reduce_sum(tf.square(tf.subtract(next_heatmap, hg2_out)), [1, 2, 3])))
