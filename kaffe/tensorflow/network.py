@@ -366,7 +366,7 @@ class Network(object):
             repeat = []
             for i in xrange(numIn):
                 repeat.append(input)
-            return tf.concat(input, dim)
+            return tf.concat(repeat, dim)
     @layer
     def multiply2(self, input, name):
         with tf.variable_scope(name) as scope:
