@@ -504,11 +504,11 @@ class Network(object):
             # lower branch
             if n>1:
                 low2 = self.hourglasses(low[nModual-1], n-1, f, imsize/2, nModual, name = 'low2')
-                print(low2.get_shape())
+                #print(low2.get_shape())
             else:
                 low2 = self.Residual(low[nModual-1], f, f, name = 'low2')
             low3 = self.Residual(low2, f, f, name='low3')
-            print(low3.get_shape())
+            #print(low3.get_shape())
             up2 = tf.image.resize_nearest_neighbor(low3, size=[int(low3.get_shape()[1])*2, int(low3.get_shape()[1])*2])
             comb = tf.add_n([up[nModual-1], up2])
             return comb
